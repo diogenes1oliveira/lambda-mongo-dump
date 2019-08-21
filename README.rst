@@ -1,2 +1,5 @@
-# lambda-mongo-dump
-Dumps MongoDB database inside an AWS Lambda instance
+==================
+lambda-mongo-utils
+==================
+
+Runs MongoDB-related utils inside AWS Lambda
