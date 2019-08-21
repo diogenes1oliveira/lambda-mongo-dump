@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "lambda-mongo-utils"
+version = "0.1.0"
+description = "Running mongo utils right from inside AWS Lambda"
+authors = ["Diógenes Oliveira <diogenes1oliveira@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+boto3 = "^1.9"
+
+[tool.poetry.dev-dependencies]
+pytest = "^3.0"
+pylint = "^2.3"
+autopep8 = "^1.4"
+moto = "^1.3"
+pytest-env = "^0.6.2"
+hypothesis = "^4.33"
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
