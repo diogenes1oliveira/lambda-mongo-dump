@@ -21,3 +21,6 @@ pytest-cov = "^2.7"
 [build-system]
 requires = ["poetry>=0.12"]
 build-backend = "poetry.masonry.api"
+
+[tool.poetry.scripts]
+multi-part-upload-from-stdout = 'lambda_mongo_utils.multipart_upload:main'

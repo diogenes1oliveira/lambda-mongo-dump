@@ -12,7 +12,6 @@ import pytest
 from lambda_mongo_utils.multipart_upload import (
     S3MultipartUpload,
     main,
-    __file__ as multipart_upload_filename,
 )
 
 
@@ -194,8 +193,7 @@ def test_command_args(s3, temp_bucket, temp_content, tmp_path, monkeypatch):
     assert response['Body'].read() == content
 
     result = subprocess.run([
-        sys.executable,
-        multipart_upload_filename,
+        'multi-part-upload-from-stdout',
         '--bucket', temp_bucket,
         '--key', key,
         'sh', '-c', 'exit 299',
