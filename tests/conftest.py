@@ -1,29 +1,24 @@
-import os
-
 import boto3
 from hypothesis import settings, Verbosity
-from moto import mock_s3
+from moto import mock_s3, mock_ssm
 import pytest
 
 
 settings.register_profile(
-    'default', max_examples=10, deadline=9000, verbosity=Verbosity.verbose)
+    'default',
+    max_examples=10,
+    deadline=9000,
+    verbosity=Verbosity.verbose,
+)
 
 
 @pytest.fixture(scope='function')
-def aws_credentials():
-    """
-    Mocked AWS Credentials for moto.
-    """
-    os.environ['AWS_ACCESS_KEY_ID'] = 'testing'
-    os.environ['AWS_SECRET_ACCESS_KEY'] = 'testing'
-    os.environ['AWS_SECURITY_TOKEN'] = 'testing'
-    os.environ['AWS_SESSION_TOKEN'] = 'testing'
-    os.environ['AWS_REGION'] = 'us-east-1'
-    os.environ['AWS_DEFAULT_REGION'] = 'us-east-1'
-
-
-@pytest.fixture(scope='function')
-def s3(aws_credentials):
+def s3():
     with mock_s3():
         yield boto3.client('s3', region_name='us-east-1')
+
+
+@pytest.fixture(scope='function')
+def ssm():
+    with mock_ssm():
+        yield boto3.client('ssm', region_name='us-east-1')
