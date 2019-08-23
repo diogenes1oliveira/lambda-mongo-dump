@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 
 import boto3
 from hypothesis import settings, Verbosity

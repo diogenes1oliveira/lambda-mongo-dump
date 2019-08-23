@@ -204,7 +204,3 @@ def main():
 
     # complete multipart upload
     print(mpu.complete(mpu_id, parts))
-
-
-if __name__ == "__main__":
-    main()
