@@ -28,17 +28,20 @@ def parse_uri(uri):
     ... }
     True
 
-    >>> parse_uri('mongodb://USER:PASSWORD@HOST1,HOST2:27017/db?replicaSet=r0') == {
+    >>> parse_uri('mongodb://USER:PWD@HOST1,HOST2:27017/db?replicaSet=r0') == {
     ...     'host': 'HOST1,HOST2:27017',
     ...     'db': 'db',
     ...     'user': 'USER',
-    ...     'pwd': 'PASSWORD',
+    ...     'pwd': 'PWD',
     ...     'replicaSet': 'r0',
     ... }
     True
     '''
 
-    rx = r'^mongodb://((?P<user>\w+):(?P<pwd>\w+)@)?(?P<host>[0-9a-zA-Z_:,.-]+)(/(?P<db>\w*)?)?'
+    rx = (
+        r'^mongodb://((?P<user>\w+):(?P<pwd>\w+)@)?'
+        r'(?P<host>[0-9a-zA-Z_:,.-]+)(/(?P<db>\w*)?)?'
+    )
     default_keys = ['db', 'host', 'user', 'pwd']
 
     query_params = {}
@@ -67,8 +70,13 @@ def get_cmd_args(uri):
     >>> get_cmd_args('mongodb://localhost/dblocal')
     ['--authenticationDatabase', 'dblocal', '--host', 'localhost']
 
-    >>> get_cmd_args('mongodb://user:pwd@host1,host2/db_remote?replicaSet=rs0')
-    ['--authenticationDatabase', 'db_remote', '--host', 'rs0/host1,host2', '--user', 'user', '--password', 'pwd']
+    >>> get_cmd_args('mongodb://user:pwd@h1,h2/db_remote?replicaSet=rs0') == [
+    ...     '--authenticationDatabase', 'db_remote',
+    ...     '--host', 'rs0/h1,h2',
+    ...     '--user', 'user',
+    ...     '--password', 'pwd'
+    ... ]
+    True
     '''
 
     parts = parse_uri(uri)

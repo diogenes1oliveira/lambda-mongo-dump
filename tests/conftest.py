@@ -1,5 +1,3 @@
-import os
-
 import boto3
 from hypothesis import settings, Verbosity
 from moto import mock_s3, mock_ssm
