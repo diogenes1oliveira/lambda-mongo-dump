@@ -13,7 +13,7 @@ install:
 
 script:
   - poetry run flake8 lambda_mongo_utils tests
-  - poetry run pytest --cov=lambda_mongo_utils tests/
+  - poetry run pytest --cov=lambda_mongo_utils
 
 after_success:
   - coveralls
