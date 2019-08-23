@@ -1,0 +1,15 @@
+---
+dist: xenial
+language: python
+python:
+  - "3.7"
+
+before_install:
+  - pip install poetry
+
+install:
+  - poetry install
+
+script:
+  - poetry run flake8 lambda_mongo_utils tests
+  - poetry run pytest --cov=lambda_mongo_utils tests/

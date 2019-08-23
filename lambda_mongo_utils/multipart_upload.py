@@ -7,6 +7,7 @@ Handles S3 multipart uploads from various sources.
 import argparse
 import logging
 import os
+import shlex
 import subprocess
 
 import boto3
@@ -21,7 +22,7 @@ class S3MultipartUpload:
     '''
 
     # AWS throws EntityTooSmall error for parts smaller than 5 MB
-    PART_MINIMUM = 5_000_000
+    PART_MINIMUM = 6_000_000
 
     def __init__(
         self,
@@ -29,7 +30,6 @@ class S3MultipartUpload:
         key,
         chunk_size=None,
         buffer_size=None,
-        verbose=False,
         s3=None,
     ):
         '''
@@ -39,7 +39,6 @@ class S3MultipartUpload:
         - key: key of the object inside the bucket
         - chunk_size: size in bytes of each part of the upload (default: 15 MB)
         - buffer_size: size in bytes of the output buffer (default: 50 MB)
-        - verbose: exhaustive log of the API calls (default: False)
         '''
         self.bucket = bucket
         self.key = key
@@ -49,8 +48,6 @@ class S3MultipartUpload:
         assert self.chunk_size >= self.PART_MINIMUM
 
         self.s3 = s3 or boto3.client("s3")
-        if verbose:
-            boto3.set_stream_logger(name="botocore")
 
     def abort_all(self):
         '''
@@ -79,7 +76,7 @@ class S3MultipartUpload:
                         Key=self.key,
                         UploadId=mpu_id,
                     )
-                except self.s3.exceptions.NoSuchUpload:
+                except (KeyError, self.s3.exceptions.NoSuchUpload):
                     pass
                 else:
                     abortions.append(mpu_id)
@@ -127,6 +124,8 @@ class S3MultipartUpload:
         i = 1
 
         for chunk in iter(lambda: process.stdout.read(self.chunk_size), b''):
+            LOGGER.debug(
+                f'[{self.key}] sizeof PartNumber[%s] = %s', i, len(chunk))
             part = self.s3.upload_part(
                 Body=chunk,
                 Bucket=self.bucket,
@@ -139,8 +138,10 @@ class S3MultipartUpload:
                 "ETag": part["ETag"],
             })
             uploaded_bytes += len(chunk)
-            LOGGER.debug(f'Uploaded {uploaded_bytes:,} bytes')
+            LOGGER.debug(f'[{self.key}] Uploaded {uploaded_bytes:,} bytes')
             i += 1
+
+        LOGGER.info(f'[{self.key}] command finished sending data')
 
         try:
             if capture_stderr:
@@ -153,8 +154,10 @@ class S3MultipartUpload:
             raise
 
         if process.returncode != 0:
-            raise Exception(
-                f'process exited with error code = {process.returncode}')
+            raise subprocess.CalledProcessError(
+                process.returncode,
+                ' '.join(shlex.quote(arg) for arg in cmd_args)
+            )
 
         return parts, stderr, uploaded_bytes
 
@@ -190,7 +193,7 @@ def main():
         key=args.key,
     )
 
-    # abort all multipart uploads for this bucket and key (optional, for starting over)
+    # abort all multipart uploads for this bucket and key
     mpu.abort_all()
 
     # create new multipart upload
