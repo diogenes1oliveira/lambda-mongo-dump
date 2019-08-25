@@ -156,9 +156,6 @@ def download_utils(dest='/tmp/bin', version='4.0-latest', utils=None):
         urllib.request.urlretrieve(url, temp_tgz)
         LOGGER.info('Downloaded to %s', temp_tgz)
 
-        import shutil
-        shutil.copyfile(temp_tgz, '/home/diogenes/temp.tgz')
-
         with tarfile.open(temp_tgz) as tar:
             member_names = tar.getnames()
 
