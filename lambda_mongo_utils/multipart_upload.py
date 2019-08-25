@@ -93,6 +93,43 @@ class S3MultipartUpload:
         mpu_id = mpu["UploadId"]
         return mpu_id
 
+    def upload_from_stream(self, mpu_id, stream):
+        '''
+        Reads from the stream, sending its output to S3.
+
+        Args:
+        - mpu_id: ID of the multipart upload, as given by create()
+        - stream: byte stream to be sent to S3
+
+        Returns: (parts, size)
+        - parts: list of the API responses for each uploaded part
+        - size: total uploaded size in bytes
+        '''
+        i = 1
+        parts = []
+        uploaded_bytes = 0
+
+        for chunk in iter(lambda: stream.read(self.chunk_size), b''):
+            LOGGER.debug(
+                f'[{self.key}] sizeof PartNumber[%s] = %s', i, len(chunk))
+            part = self.s3.upload_part(
+                Body=chunk,
+                Bucket=self.bucket,
+                Key=self.key,
+                UploadId=mpu_id,
+                PartNumber=i,
+            )
+            parts.append({
+                "PartNumber": i,
+                "ETag": part["ETag"],
+            })
+            uploaded_bytes += len(chunk)
+            LOGGER.debug(f'[{self.key}] Uploaded {uploaded_bytes:,} bytes')
+            i += 1
+
+        LOGGER.info(f'[{self.key}] byte stream ended')
+        return parts, uploaded_bytes
+
     def upload_from_stdout(self, mpu_id, cmd_args, capture_stderr=False):
         '''
         Runs the command and sends its output to S3.

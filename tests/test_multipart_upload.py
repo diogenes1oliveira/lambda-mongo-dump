@@ -1,3 +1,4 @@
+import io
 import os
 import shlex
 import subprocess
@@ -199,3 +200,21 @@ def test_command_args(s3, temp_bucket, temp_content, tmp_path, monkeypatch):
         'sh', '-c', 'exit 299',
     ])
     assert result.returncode in [1, 299]
+
+
+@given(
+    size=strategies.integers(1, 2 * S3MultipartUpload.PART_MINIMUM),
+)
+def test_upload_from_stream(s3, temp_bucket, size):
+    content = os.urandom(size)
+    stream = io.BytesIO(content)
+    key = f'test-upload-from-stream-{size}'
+
+    mpu = S3MultipartUpload(bucket=temp_bucket, key=key)
+
+    mpu_id = mpu.create()
+    parts, size = mpu.upload_from_stream(mpu_id, stream)
+    mpu.complete(mpu_id, parts)
+
+    response = s3.get_object(Bucket=temp_bucket, Key=key)
+    assert response['Body'].read() == content
