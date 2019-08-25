@@ -18,6 +18,8 @@ pytest-env = "^0.6.2"
 hypothesis = "^4.33"
 flake8 = "^3.7"
 pytest-cov = "^2.7"
+docker = "^4.0"
+ipython = "^7.7"
 
 [tool.poetry.scripts]
 multi-part-upload-from-stdout = 'lambda_mongo_utils.multipart_upload:main'

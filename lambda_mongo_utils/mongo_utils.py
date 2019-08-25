@@ -4,8 +4,37 @@
 Miscellaneous utilities to interface with Mongo.
 '''
 
+import logging
+import os
+from pathlib import Path
 import re
 import urllib.parse
+import tarfile
+import tempfile
+
+
+LOGGER = logging.getLogger(__name__)
+LOGGER.setLevel(os.getenv('LOG_LEVEL', 'INFO'))
+
+
+URL_DOWNLOAD_BASE = (
+    'http://downloads.mongodb.org/linux/mongodb-linux-x86_64-amazon2-v'
+)
+AVAILABLE_MONGO_UTILS = [
+    'bsondump',
+    'install_compass',
+    'mongo',
+    'mongod',
+    'mongodump',
+    'mongoexport',
+    'mongofiles',
+    'mongoimport',
+    'mongoreplay',
+    'mongorestore',
+    'mongos',
+    'mongostat',
+    'mongotop',
+]
 
 
 def parse_uri(uri):
@@ -93,3 +122,67 @@ def get_cmd_args(uri):
         args += ['--user', parts['user'], '--password', parts['pwd']]
 
     return args
+
+
+def download_utils(dest='/tmp/bin', version='4.0-latest', utils=None):
+    '''
+    Downloads a Mongo version and extracts the specified binaries.
+
+    Args:
+    - dest: destination directory (created if it doesn't exist)
+    - version: version of Mongo to be downloaded (default: 4.0)
+    - utils: utils to be downloaded (default: ['mongo', 'mongodump'])
+
+    Returns
+        {MONGO_UTIL_NAME: PATH}
+
+    The names for the versions can be found in the URL
+    https://www.mongodb.org/dl/linux/x86_64-amazon2
+    '''
+    url = f'{URL_DOWNLOAD_BASE}{version}.tgz'
+    dest = Path(dest)
+    utils = ['mongo', 'mongodump'] if utils is None else utils
+
+    if dest.exists() and not dest.is_dir():
+        raise Exception('Destination is not a directory')
+
+    dest.mkdir(parents=True, exist_ok=True)
+    utils_to_return = {}
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        temp_tgz = Path(tmpdir) / 'mongo.tgz'
+
+        LOGGER.info('Downloading %s', url)
+        urllib.request.urlretrieve(url, temp_tgz)
+        LOGGER.info('Downloaded to %s', temp_tgz)
+
+        import shutil
+        shutil.copyfile(temp_tgz, '/home/diogenes/temp.tgz')
+
+        with tarfile.open(temp_tgz) as tar:
+            member_names = tar.getnames()
+
+            for util in utils:
+                util_dest_path = Path(dest) / util
+
+                try:
+                    member_name = [
+                        m for m in member_names
+                        if m.endswith(f'bin/{util}')
+                    ][0]
+                except IndexError:
+                    raise ValueError(f'No such util {util} in the file')
+                else:
+                    LOGGER.info('Extracting %s to %s', util, util_dest_path)
+                    with util_dest_path.open('wb') as fp:
+                        fp.write(tar.extractfile(member_name).read())
+
+                    LOGGER.info('Adding chmod +x to %s', util_dest_path)
+                    util_dest_path.chmod(0o755)
+
+                    utils_to_return[util] = str(util_dest_path)
+
+            if not utils:
+                LOGGER.info('No util to extract')
+
+    return utils_to_return
