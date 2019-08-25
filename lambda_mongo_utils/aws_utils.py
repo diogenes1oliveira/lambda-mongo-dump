@@ -32,6 +32,7 @@ def inject_ssm_params_into_env(decrypt=True, **param_specs):
         )
 
     ...will inject the values as environment variables:
+
     print(os.getenv('SECRET_VALUE')) # 'my-secret-value'
     print(os.getenv('OTHER_VALUE')) # 'not-so-secret'
     '''
