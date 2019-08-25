@@ -1,5 +1,4 @@
 import io
-import os
 import re
 import shutil
 import subprocess
@@ -33,9 +32,9 @@ def mock_mongo_file(version, dest):
 def test_download_utils(tmp_path, monkeypatch, utils):
 
     versions = {
-        '4.2-latest': 'http://downloads.mongodb.org/linux/mongodb-linux-x86_64-amazon2-v4.2-latest.tgz',
-        '4.0-latest': 'http://downloads.mongodb.org/linux/mongodb-linux-x86_64-amazon2-v4.0-latest.tgz',
-        '4.2.0': 'http://downloads.mongodb.org/linux/mongodb-linux-x86_64-amazon2-v4.2.0.tgz',
+        '4.2-latest': 'http://downloads.mongodb.org/linux/mongodb-linux-x86_64-amazon2-v4.2-latest.tgz',  # noqa: E501
+        '4.0-latest': 'http://downloads.mongodb.org/linux/mongodb-linux-x86_64-amazon2-v4.0-latest.tgz',  # noqa: E501
+        '4.2.0': 'http://downloads.mongodb.org/linux/mongodb-linux-x86_64-amazon2-v4.2.0.tgz',            # noqa: E501
     }
 
     for version, version_url in versions.items():
