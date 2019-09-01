@@ -19,9 +19,11 @@ import time
 from typing import (
     Any,
     BinaryIO,
+    ContextManager,
     Iterable,
     Mapping,
     NamedTuple,
+    Optional,
 )
 
 from bson.objectid import ObjectId
@@ -70,7 +72,7 @@ class MongoDumpOutput(NamedTuple):
     stats: MongoStats
 
 
-def parse_uri(uri):
+def parse_uri(uri: str) -> Mapping[str, Optional[str]]:
     '''
     Parses a Mongo connection URI, returnining a dictionary with at least
     the following key:
@@ -124,7 +126,7 @@ def parse_uri(uri):
     return result
 
 
-def get_cmd_args(uri):
+def get_cmd_args(uri: str) -> Iterable[str]:
     '''
     Builds the list of command-line arguments to connect to the database
     via Mongo utils.
@@ -157,7 +159,11 @@ def get_cmd_args(uri):
     return args
 
 
-def download_utils(dest='/tmp/bin', version='4.0-latest', utils=None):
+def download_utils(
+    dest: str = '/tmp/bin',
+    version: str = '4.0-latest',
+    utils: str = None,
+):
     '''
     Downloads a Mongo version and extracts the specified binaries.
 
@@ -227,18 +233,18 @@ def mongo_dump(
     buffer_size=None,
     count=True,
     cmd_prefix: str = '',
-):
+) -> ContextManager[MongoDumpOutput]:
     '''
     Executes mongodump, yielding a stream to read its output.
 
     Args:
-    - cmd: mongodump base command as an array of strings
     - uri: Mongo connection string
     - collection: name of the collection to be dumped
     - db: name of the database (defaults to the one in the URI or 'admin')
     - query: query to select the documents to be dumped
     - buffer_size: size of the buffer for the stdout (default: 10MB)
     - count: count the number of documents
+    - cmd_prefix: prefix to be added to the mongodump base command
 
     Yields:
         MongoDumpOutput
@@ -302,7 +308,7 @@ def mongo_restore(
     buffer_size=None,
     drop=False,
     cmd_prefix='',
-):
+) -> MongoStats:
     '''
     Executes mongorestore, restoring a previously gzipped dump from the given
     stream.
@@ -314,7 +320,7 @@ def mongo_restore(
     - db: name of the database (defaults to the one in the URI or 'admin')
     - buffer_size: size of each chunk to be read (default: 10MB)
     - drop: drop current collection
-    - cmd_prefix: prefix to be added to the command
+    - cmd_prefix: prefix to be added to the mongorestore base command
 
     Yields:
         MongoStats
