@@ -4,14 +4,27 @@
 Miscellaneous utilities to interface with Mongo.
 '''
 
+from contextlib import contextmanager
+from dataclasses import dataclass
 import logging
 import os
 from pathlib import Path
 import re
+from shlex import split as shell_split
+import subprocess
 import urllib.parse
 import tarfile
 import tempfile
+import time
+from typing import (
+    Any,
+    BinaryIO,
+    Iterable,
+    Mapping,
+    NamedTuple,
+)
 
+from bson.objectid import ObjectId
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(os.getenv('LOG_LEVEL', 'INFO'))
@@ -35,6 +48,26 @@ AVAILABLE_MONGO_UTILS = [
     'mongostat',
     'mongotop',
 ]
+
+
+@dataclass
+class MongoStats:
+    collection: str = None
+    db: str = None
+    num_docs: int = None
+    time: float = None
+    duplicated_ids: Iterable[str] = None
+
+    @contextmanager
+    def measure(self):
+        t0 = time.time()
+        yield
+        self.time = time.time() - t0
+
+
+class MongoDumpOutput(NamedTuple):
+    stream: BinaryIO
+    stats: MongoStats
 
 
 def parse_uri(uri):
@@ -183,3 +216,153 @@ def download_utils(dest='/tmp/bin', version='4.0-latest', utils=None):
                 LOGGER.info('No util to extract')
 
     return utils_to_return
+
+
+@contextmanager
+def mongo_dump(
+    uri: str,
+    collection: str,
+    db: str = None,
+    query: Mapping[str, Any] = None,
+    buffer_size=None,
+    count=True,
+    cmd_prefix: str = '',
+):
+    '''
+    Executes mongodump, yielding a stream to read its output.
+
+    Args:
+    - cmd: mongodump base command as an array of strings
+    - uri: Mongo connection string
+    - collection: name of the collection to be dumped
+    - db: name of the database (defaults to the one in the URI or 'admin')
+    - query: query to select the documents to be dumped
+    - buffer_size: size of the buffer for the stdout (default: 10MB)
+    - count: count the number of documents
+
+    Yields:
+        MongoDumpOutput
+    '''
+    buffer_size = buffer_size or 10_000_000
+
+    parts = parse_uri(uri)
+    db = db or parts.get('db', 'admin')
+    stats = MongoStats(db=db, collection=collection)
+
+    args = shell_split(cmd_prefix + 'mongodump')
+    args += get_cmd_args(uri)
+    args += [
+        '--db', db,
+        '--collection', collection,
+        '--archive', '--gzip',
+    ]
+    try:
+        process = subprocess.Popen(
+            args,
+            errors=None,
+            stdout=subprocess.PIPE,
+            stderr=(subprocess.PIPE if count else subprocess.DEVNULL),
+            text=None,
+            encoding=None,
+            universal_newlines=None,
+            bufsize=buffer_size,
+        )
+
+        with stats.measure():
+            yield MongoDumpOutput(
+                stream=process.stdout,
+                stats=stats,
+            )
+        _, stderr = process.communicate(timeout=1.0)
+        stderr = stderr.decode('utf-8') if stderr else ''
+
+        if process.returncode != 0:
+            LOGGER.error(stderr)
+            raise Exception(
+                f'mongodump exited with error code = {process.returncode}')
+
+        m = re.search(
+            f'done dumping {db}.{collection} ' +
+            r'\((?P<num>\d+) documents\)',
+            stderr,
+            re.MULTILINE,
+        )
+        if m:
+            stats.num_docs = int(m.group('num'))
+
+    finally:
+        process.terminate()
+
+
+def mongo_restore(
+    stream: BinaryIO,
+    uri: str,
+    collection: str,
+    db: str = None,
+    buffer_size=None,
+    drop=False,
+    cmd_prefix='',
+):
+    '''
+    Executes mongorestore, restoring a previously gzipped dump from the given
+    stream.
+
+    Args:
+    - stream: stream to read from
+    - uri: Mongo connection string
+    - collection: name of the collection to be restored
+    - db: name of the database (defaults to the one in the URI or 'admin')
+    - buffer_size: size of each chunk to be read (default: 10MB)
+    - drop: drop current collection
+    - cmd_prefix: prefix to be added to the command
+
+    Yields:
+        MongoStats
+    '''
+    buffer_size = buffer_size or 10_000_000
+
+    parts = parse_uri(uri)
+    db = db or parts.get('db', 'admin')
+    stats = MongoStats(db=db, collection=collection)
+
+    args = shell_split(cmd_prefix + 'mongorestore')
+    args += get_cmd_args(uri)
+    if drop:
+        args += ['--drop']
+    args += [
+        '--archive', '--gzip',
+        '--nsInclude', '*.*',
+        '--nsFrom', '$db$.$col$',
+        '--nsTo', f'{db}.{collection}',
+    ]
+
+    with stats.measure():
+        process = subprocess.run(
+            args,
+            errors=None,
+            stdin=stream,
+            text=True,
+            check=True,
+            bufsize=buffer_size,
+            capture_output=True,
+        )
+
+        num_match = re.search(
+            f'finished restoring {db}.{collection} ' +
+            r'\((?P<num>\d+) documents\)',
+            process.stderr,
+            re.MULTILINE,
+        )
+        stats.num_docs = int(num_match.group('num')) if num_match else None
+
+        dup_match = re.findall(
+            r"_id_ dup key: \{ : ObjectId\('(?P<id>[0-9a-fA-F]+)'\) \}",
+            process.stderr,
+            re.MULTILINE,
+        )
+        stats.duplicated_ids = [
+            ObjectId(id) for id in dup_match if id
+        ]
+        stats.num_docs -= len(stats.duplicated_ids)
+
+    return stats
