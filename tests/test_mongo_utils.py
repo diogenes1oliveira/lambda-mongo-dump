@@ -1,4 +1,3 @@
-from contextlib import contextmanager
 import io
 import logging
 import os
@@ -6,17 +5,16 @@ import re
 import shutil
 import subprocess
 import tarfile
-import time
 import uuid
 import urllib.request
 
-import docker
 from hypothesis import given, strategies
 from pymongo import MongoClient
 import pytest
 from unittest.mock import MagicMock
 
 from lambda_mongo_utils import mongo_utils
+from .common_utils import wait_for_mongo_to_be_up
 
 
 LOGGER = logging.getLogger(__name__)
@@ -28,34 +26,6 @@ def to_utf8(s):
         return s.decode('utf-8')
     else:
         return str(s)
-
-
-@pytest.fixture(scope='function')
-def docker_container():
-    @contextmanager
-    def inner(image='mongo:4.0', appdir=None, **kwargs):
-        if appdir:
-            kwargs.setdefault('volumes', {
-                appdir: {
-                    'bind': '/app',
-                    'mode': 'rw',
-                },
-            })
-            kwargs.setdefault('working_dir', '/app')
-        client = docker.from_env()
-        container = client.containers.run(
-            image,
-            detach=True,
-            auto_remove=True,
-            remove=True,
-            **kwargs,
-        )
-        try:
-            yield container
-        finally:
-            container.kill()
-
-    return inner
 
 
 def mock_mongo_file(version, dest):
@@ -120,32 +90,6 @@ def test_download_utils(tmp_path, monkeypatch, utils):
         assert re.search('not a directory', str(e.value))
 
 
-def wait_for_mongo_to_be_up(container, timeout=None):
-    '''
-    Waits until I can connect to Mongo inside the given container.
-    '''
-    rc = None
-    timeout = timeout or 10
-    t0 = time.time()
-    stderr = ''
-
-    while time.time() - t0 < timeout:
-        # Try again until Mongo connects
-        rc, (_, stderr) = container.exec_run(
-            ['mongo', '--eval', 'quit()'],
-            demux=True,
-        )
-        if rc == 0:
-            break
-        else:
-            time.sleep(1.0)
-
-    if rc != 0:
-        LOGGER.warning(to_utf8(stderr))
-
-    return rc == 0
-
-
 def test_mongo_dump_and_restore(docker_container, tmp_path):
     # Dummy data insertion
     docs = [
@@ -157,35 +101,36 @@ def test_mongo_dump_and_restore(docker_container, tmp_path):
     port = 27020
     client = MongoClient(f'mongodb://localhost:{port}')
     uri = 'mongodb://localhost/tmpdb'
-    dump = str(tmp_path / 'dump1.tgz')
+    dump_path = str(tmp_path / 'dump1.tgz')
 
     with docker_container('mongo:4.0', ports={'27017/tcp': str(port)}, appdir=str(tmp_path)) as container:  # noqa: E501
         wait_for_mongo_to_be_up(container)
         cmd_prefix = f'docker exec -i {container.id} '
         inserted_doc_ids = client.db1['col1'].insert_many(docs).inserted_ids
 
+        # Get a dump after inserting the documents
         with mongo_utils.mongo_dump(cmd_prefix=cmd_prefix, uri=uri, collection='col1', db='db1') as (stream, stats):  # noqa: E501
-            with open(dump, 'wb') as fp:
+            with open(dump_path, 'wb') as fp:
                 fp.write(stream.read())
 
         assert stats.num_docs == 3
 
+        # Doesn't count the number of docs if requested not to
         with mongo_utils.mongo_dump(cmd_prefix=cmd_prefix, uri=uri, collection='col1', db='db1', count=False) as (_, stats):  # noqa: E501
             pass
-
         assert not stats.num_docs
 
+        # Test if a dummy falsey command throws
         with pytest.raises(Exception) as exc:
             with mongo_utils.mongo_dump(cmd_prefix=cmd_prefix + ' false ', uri=uri, collection='col1', db='db1') as _:  # noqa: E501
                 pass
-
         assert re.search('exited with error code', str(exc))
 
     with docker_container('mongo:4.0', ports={'27017/tcp': str(port)}, appdir=str(tmp_path)) as container:  # noqa: E501
         wait_for_mongo_to_be_up(container)
 
         def restore_dump(**kwargs):
-            with open(dump, 'rb') as fp:
+            with open(dump_path, 'rb') as fp:
                 return mongo_utils.mongo_restore(
                     stream=fp,
                     cmd_prefix=f'docker exec -i {container.id} ',
@@ -234,3 +179,7 @@ def test_mongo_dump_and_restore(docker_container, tmp_path):
             'col1doc1', 'col1doc2', 'col1doc3',
         }
         assert stats.num_docs == 3
+
+        with pytest.raises(Exception) as exc:
+            restore_dump(cmd_prefix=f'docker exec -i {container.id} false ')
+        assert re.search('exited with error code', str(exc))

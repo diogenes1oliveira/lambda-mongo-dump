@@ -250,6 +250,7 @@ def mongo_dump(
         MongoDumpOutput
     '''
     buffer_size = buffer_size or 10_000_000
+    process = None
 
     parts = parse_uri(uri)
     db = db or parts.get('db', 'admin')
@@ -297,7 +298,8 @@ def mongo_dump(
             stats.num_docs = int(m.group('num'))
 
     finally:
-        process.terminate()
+        if process:
+            process.terminate()
 
 
 def mongo_restore(
@@ -306,6 +308,7 @@ def mongo_restore(
     collection: str,
     db: str = None,
     buffer_size=None,
+    chunk_size=None,
     drop=False,
     cmd_prefix='',
 ) -> MongoStats:
@@ -326,6 +329,8 @@ def mongo_restore(
         MongoStats
     '''
     buffer_size = buffer_size or 10_000_000
+    chunk_size = chunk_size or 10_000_000
+    process = None
 
     parts = parse_uri(uri)
     db = db or parts.get('db', 'admin')
@@ -343,27 +348,42 @@ def mongo_restore(
     ]
 
     with stats.measure():
-        process = subprocess.run(
-            args,
-            errors=None,
-            stdin=stream,
-            text=True,
-            check=True,
-            bufsize=buffer_size,
-            capture_output=True,
-        )
+        try:
+            stderr = b''
+            process = subprocess.Popen(
+                args,
+                errors=None,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                bufsize=buffer_size,
+            )
 
+            for chunk in iter(lambda: stream.read(chunk_size), b''):
+                process.stdin.write(chunk)
+
+            _, stderr = process.communicate()
+        finally:
+            if process:
+                process.terminate()
+                if process.returncode != 0:
+                    raise Exception(
+                        'mongorestore exited with error code = ' +
+                        str(process.returncode)
+                    )
+
+        stderr = stderr.decode('utf-8')
         num_match = re.search(
             f'finished restoring {db}.{collection} ' +
             r'\((?P<num>\d+) documents\)',
-            process.stderr,
+            stderr,
             re.MULTILINE,
         )
         stats.num_docs = int(num_match.group('num')) if num_match else None
 
         dup_match = re.findall(
             r"_id_ dup key: \{ : ObjectId\('(?P<id>[0-9a-fA-F]+)'\) \}",
-            process.stderr,
+            stderr,
             re.MULTILINE,
         )
         stats.duplicated_ids = [
