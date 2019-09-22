@@ -21,6 +21,7 @@ flake8 = "^3.7"
 pytest-cov = "^2.7"
 docker = "^4.0"
 ipython = "^7.7"
+Faker = "^2.0"
 
 [tool.poetry.scripts]
 multi-part-upload-from-stdout = 'lambda_mongo_utils.multipart_upload:main'

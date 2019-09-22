@@ -16,13 +16,6 @@ from lambda_mongo_utils.multipart_upload import (
 )
 
 
-@pytest.fixture
-def temp_bucket(s3):
-    bucket_name = f'temp-bucket-{uuid.uuid4()}'
-    s3.create_bucket(Bucket=bucket_name)
-    return bucket_name
-
-
 @pytest.fixture(scope='function')
 def temp_content(tmp_path):
     def inner(size):
