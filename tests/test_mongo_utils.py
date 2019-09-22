@@ -179,7 +179,3 @@ def test_mongo_dump_and_restore(docker_container, tmp_path):
             'col1doc1', 'col1doc2', 'col1doc3',
         }
         assert stats.num_docs == 3
-
-        with pytest.raises(Exception) as exc:
-            restore_dump(cmd_prefix=f'docker exec -i {container.id} false ')
-        assert re.search('exited with error code', str(exc))
